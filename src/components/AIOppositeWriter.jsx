@@ -1,5 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 
+// ─── GROQ API KEY ────────────────────────────────────────────────────────────
+const GROQ_API_KEY  = "gsk_your_groq_api_key_here"; // ← paste your key here
+const GROQ_MODEL    = "llama-3.3-70b-versatile";
+const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+// ─────────────────────────────────────────────────────────────────────────────
+
 const MODES = [
   { id: "word", label: "Word", icon: "W", desc: "Single word opposites" },
   { id: "sentence", label: "Sentence", icon: "S", desc: "Flip sentence meaning" },
@@ -83,14 +89,14 @@ INSIGHT: [1-2 sentences explaining the key transformation you made]`;
     setResult(null);
 
     try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const response = await fetch(GROQ_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer gsk_your_groq_api_key_here`,
+          "Authorization": `Bearer ${GROQ_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: GROQ_MODEL,
           max_tokens: 1000,
           messages: [{ role: "user", content: buildPrompt() }],
         }),
