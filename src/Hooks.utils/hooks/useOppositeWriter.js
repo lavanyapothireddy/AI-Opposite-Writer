@@ -1,16 +1,9 @@
 import { useState } from "react";
 import { buildPrompt } from "../utils/buildPrompt";
 
-// ─── GROQ API KEY ────────────────────────────────────────────────────────────
-const GROQ_API_KEY = "gsk_your_groq_api_key_here";
-// Replace with your real key from https://console.groq.com/keys
-// ─────────────────────────────────────────────────────────────────────────────
-
-const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL    = "llama-3.3-70b-versatile";
-
 /**
- * Custom hook that encapsulates Groq API logic and all app state.
+ * Custom hook that encapsulates API logic and all app state.
+ * Calls /api/generate (our Express proxy) so the Groq key stays server-side.
  */
 export function useOppositeWriter() {
   const [mode,    setMode]    = useState("sentence");
@@ -23,35 +16,24 @@ export function useOppositeWriter() {
 
   const generate = async () => {
     if (!input.trim()) return;
-
     setLoading(true);
     setError(null);
     setResult(null);
 
     try {
-      const response = await fetch(GROQ_ENDPOINT, {
+      const response = await fetch("/api/generate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model:      GROQ_MODEL,
-          max_tokens: 1000,
-          messages: [
-            { role: "user", content: buildPrompt(input, mode, style) },
-          ],
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: buildPrompt(input, mode, style) }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error?.message || `Groq error ${response.status}`);
+        throw new Error(data.error || `Server error ${response.status}`);
       }
 
-      const raw = data.choices?.[0]?.message?.content || "";
-
+      const raw = data.content || "";
       const oppMatch     = raw.match(/OPPOSITE:\s*([\s\S]*?)(?:INSIGHT:|$)/i);
       const insightMatch = raw.match(/INSIGHT:\s*([\s\S]*)/i);
 
@@ -59,13 +41,12 @@ export function useOppositeWriter() {
       const insight  = insightMatch ? insightMatch[1].trim() : "";
 
       const entry = { input, opposite, insight, mode, style, id: Date.now() };
-
       setResult(entry);
       setHistory((prev) => [entry, ...prev].slice(0, 10));
     } catch (err) {
       setError(
-        err.message.includes("401") || err.message.includes("403")
-          ? "Invalid API key. Update GROQ_API_KEY in useOppositeWriter.js."
+        err.message.includes("GROQ_API_KEY")
+          ? "API key not configured. Add GROQ_API_KEY in Render environment variables."
           : `Error: ${err.message}`
       );
     } finally {
