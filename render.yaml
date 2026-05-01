@@ -1,4 +1,3 @@
-
 services:
   - type: web
     name: ai-opposite-writer
@@ -10,5 +9,3 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
-EOF
-echo "done"
