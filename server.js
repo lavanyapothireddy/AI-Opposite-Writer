@@ -1,69 +1,67 @@
-// server.js — Run this as your backend in production
-// npm install express node-fetch cors dotenv
+// server-static.js
+// Plain Node.js static file server — serves the Vite build output (dist/)
+// No dependency on vite being installed at runtime.
 
-import express from 'express'
-import fetch from 'node-fetch'
-import cors from 'cors'
-import dotenv from 'dotenv'
+import http from "http";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-dotenv.config()
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DIST      = path.join(__dirname, "dist");
+const PORT      = process.env.PORT || 10000;
 
-const app = express()
-const PORT = process.env.PORT || 3001
+const MIME = {
+  ".html": "text/html",
+  ".js":   "application/javascript",
+  ".mjs":  "application/javascript",
+  ".css":  "text/css",
+  ".svg":  "image/svg+xml",
+  ".png":  "image/png",
+  ".ico":  "image/x-icon",
+  ".json": "application/json",
+  ".woff": "font/woff",
+  ".woff2":"font/woff2",
+  ".ttf":  "font/ttf",
+};
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000' }))
-app.use(express.json())
+const server = http.createServer((req, res) => {
+  // Strip query string
+  let urlPath = req.url.split("?")[0];
 
-// Rate limiting (simple in-memory, use redis in prod)
-const requestCounts = new Map()
-app.use((req, res, next) => {
-  const ip = req.ip
-  const now = Date.now()
-  const windowMs = 60_000 // 1 minute
-  const max = 20
+  // Resolve file path
+  let filePath = path.join(DIST, urlPath);
 
-  if (!requestCounts.has(ip)) requestCounts.set(ip, [])
-  const times = requestCounts.get(ip).filter(t => now - t < windowMs)
-  if (times.length >= max) return res.status(429).json({ error: 'Too many requests' })
-  times.push(now)
-  requestCounts.set(ip, times)
-  next()
-})
-
-app.post('/api/opposite', async (req, res) => {
-  try {
-    const { model, max_tokens, messages } = req.body
-
-    if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: 'Invalid request body' })
-    }
-
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: model || 'llama-3.3-70b-versatile',
-        max_tokens: max_tokens || 1000,
-        messages,
-      }),
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      return res.status(response.status).json({ error: data.error?.message || 'Groq API error' })
-    }
-
-    res.json(data)
-  } catch (error) {
-    console.error('Proxy error:', error)
-    res.status(500).json({ error: 'Internal server error' })
+  // If it's a directory, try index.html inside it
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+    filePath = path.join(filePath, "index.html");
   }
-})
 
-app.get('/health', (req, res) => res.json({ status: 'ok', provider: 'groq' }))
+  // If file doesn't exist, serve index.html (SPA client-side routing)
+  if (!fs.existsSync(filePath)) {
+    filePath = path.join(DIST, "index.html");
+  }
 
-app.listen(PORT, () => console.log(`Proxy server running on port ${PORT} — using Groq API`))
+  const ext      = path.extname(filePath);
+  const mimeType = MIME[ext] || "application/octet-stream";
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(500);
+      res.end("Internal Server Error");
+      return;
+    }
+
+    // Cache static assets, no-cache HTML
+    const isHTML = ext === ".html" || !ext;
+    res.writeHead(200, {
+      "Content-Type":  mimeType,
+      "Cache-Control": isHTML ? "no-cache" : "public, max-age=31536000",
+    });
+    res.end(data);
+  });
+});
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ AI Opposite Writer running on http://0.0.0.0:${PORT}`);
+});
